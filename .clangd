@@ -1,6 +1,0 @@
-CompileFlags:
-  # Use Meson's compilation database.
-  CompilationDatabase: builddir
-  
-  Add:
-    - -ICLI11
