@@ -2,6 +2,10 @@
 build:
     cargo build
 
+run *ARGS: build
+    ./target/debug/vxectl {{ARGS}}
+
+
 # Build the project in release mode
 build-release:
     cargo build --release
