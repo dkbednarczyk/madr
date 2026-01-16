@@ -9,9 +9,9 @@ The goal is to have full feature parity with the [web interface](https://v3-hub.
 - [x] DPI stages
     - [ ] DPI setting per-stage
 - [x] Polling rate
-- [X] Sensor sampling rate
-- [ ] Debounce time
-- [ ] Sleep time
+- [x] Sensor sampling rate
+- [x] Debounce time
+- [x] Sleep time
 - [ ] LOD Silent Height (liftoff distance)
 
 *... and more ...*
