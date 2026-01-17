@@ -12,6 +12,7 @@ The goal is to have full feature parity with the [web interface](https://v3-hub.
 - [x] Sensor sampling rate
 - [x] Debounce time
 - [x] Sleep time
+- [x] Battery (percentage, voltage, charging status)
 - [ ] LOD Silent Height (liftoff distance)
 
 *... and more ...*
