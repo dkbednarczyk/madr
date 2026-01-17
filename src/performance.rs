@@ -13,14 +13,14 @@ pub fn get_dpi_packet(dpi_stage: u8) -> Vec<u8> {
         0x00,
         0x00,
         0x06,
-        // magic bits for DPI stage
+        // magic bits
         0x01,
         0x54,
         0x04,
         0x51,
         // set DPI stage index
-        dpi_stage,
-        0x55u8.wrapping_sub(dpi_stage),
+        dpi_stage - 1,
+        0x55u8.wrapping_sub(dpi_stage - 1),
         0x00,
         0x00,
         0x00,
@@ -66,8 +66,8 @@ pub fn get_polling_rate_packet(rate: u16) -> Vec<u8> {
     ]
 }
 
-/// Get combined packet for setting both DPI stage and polling rate
-/// This is more reliable than sending two separate packets as they share the same command structure
+// Get combined packet for setting both DPI stage and polling rate
+// This is more reliable than sending two separate packets as they share the same command structure
 pub fn get_combined_packet(dpi_stage: u8, rate: u16) -> Vec<u8> {
     let rate_byte: u8 = match rate {
         125 => 0x08,
@@ -90,9 +90,9 @@ pub fn get_combined_packet(dpi_stage: u8, rate: u16) -> Vec<u8> {
         rate_byte,                      // byte 6: polling rate
         0x55u8.wrapping_sub(rate_byte), // byte 7: polling rate checksum
         0x04,
-        0x51,                           // bytes 8-9: magic bits
-        dpi_stage,                      // byte 10: DPI stage
-        0x55u8.wrapping_sub(dpi_stage), // byte 11: DPI stage checksum
+        0x51,                               // bytes 8-9: magic bits
+        dpi_stage - 1,                      // byte 10: DPI stage
+        0x55u8.wrapping_sub(dpi_stage - 1), // byte 11: DPI stage checksum
         0x00,
         0x00,
         0x00,
@@ -101,7 +101,7 @@ pub fn get_combined_packet(dpi_stage: u8, rate: u16) -> Vec<u8> {
     ]
 }
 
-/// Build the appropriate packet based on which settings are provided
+// Build the appropriate packet based on which settings are provided
 pub fn build_packet(dpi_stage: Option<u8>, polling_rate: Option<u16>) -> Option<Vec<u8>> {
     match (dpi_stage, polling_rate) {
         (Some(stage), Some(rate)) => Some(get_combined_packet(stage, rate)),
@@ -111,7 +111,7 @@ pub fn build_packet(dpi_stage: Option<u8>, polling_rate: Option<u16>) -> Option<
     }
 }
 
-/// Apply performance settings to device
+// Apply performance settings to device
 pub fn apply_settings(
     device: &Device,
     dpi_stage: Option<u8>,
@@ -127,6 +127,7 @@ pub fn apply_settings(
         if let Some(stage) = dpi_stage {
             println!("Set DPI stage to {}", stage);
         }
+
         if let Some(rate) = polling_rate_val {
             println!("Set polling rate to {} Hz", rate);
         }

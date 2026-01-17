@@ -23,19 +23,34 @@ unsigned char bytes[] = {0x8, 0x4, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 
 example response: [08, 04, 00, 00, 00, 02, 5F, 01, 10, 44, 00, 00, 00, 00, 00, 00, 93]
 - Byte 6 (0x5F): Battery Percentage.
 - Byte 7 (00 or 01): Charging Status.
-- Bytes 8-9 (0FF8 → 1044): Voltage.
+- Bytes 8-9 (1044): Voltage.
     - Wireless: 0x0FF8 = 4088 mV (4.08V).
     - Wired: 0x1044 = 4164 mV (4.16V).
-    - Note: The voltage jumped up because the USB cable is supplying power.
 
 unsigned char bytes[] = {0x8, 0x1, 0x0, 0x0, 0x0, 0x8, 0xdc, 0xb9, 0x23, 0x88, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x4};
 */
 
 #[derive(Debug)]
-struct BatteryStatus {
+pub struct BatteryStatus {
     percentage: u8,
     voltage_mv: u16,
     is_charging: bool,
+}
+
+#[derive(Debug)]
+pub struct SensorInfo {
+    setting: u8,
+}
+
+impl SensorInfo {
+    pub fn setting_name(&self) -> &str {
+        match self.setting {
+            0 => "basic",
+            1 => "competitive",
+            2 => "max",
+            _ => "unknown",
+        }
+    }
 }
 
 fn parse_battery_report(data: &[u8]) -> Option<BatteryStatus> {
@@ -58,6 +73,15 @@ fn parse_battery_report(data: &[u8]) -> Option<BatteryStatus> {
         voltage_mv,
         is_charging,
     })
+}
+
+fn parse_sensor_report(data: &[u8]) -> Option<SensorInfo> {
+    // Validate Header (0x08), Command (0x08), and Length
+    if data.len() < 17 || data[0] != 0x08 || data[1] != 0x08 {
+        return None;
+    }
+
+    Some(SensorInfo { setting: data[10] })
 }
 
 pub fn get_battery(device: &Device) -> Result<()> {
@@ -110,4 +134,34 @@ pub fn get_battery(device: &Device) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn get_sensor_info(device: &Device) -> Result<SensorInfo> {
+    let mut packet = [0u8; 17];
+    packet[0] = 0x08;
+    packet[1] = 0x08;
+    packet[4] = 0xB5;
+    packet[5] = 0x06;
+    packet[16] = 0x8a;
+
+    match device.write(&packet) {
+        Ok(_) => (),
+        Err(e) => return Err(anyhow!("Failed to send sensor request: {}", e)),
+    }
+
+    let mut buf = [0u8; 256];
+    let size = if let Ok(s) = device.read(&mut buf) {
+        s
+    } else {
+        return Err(anyhow!("Failed to read sensor response"));
+    };
+
+    let data = &buf[..size];
+
+    if let Some(info) = parse_sensor_report(data) {
+        println!("{}", info.setting_name());
+        Ok(info)
+    } else {
+        Err(anyhow!("Invalid sensor report format"))
+    }
 }
