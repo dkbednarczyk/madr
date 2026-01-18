@@ -7,7 +7,10 @@ The goal is to have full feature parity with the [web interface](https://v3-hub.
 
 ## Support
 - [x] DPI stages
-    - [ ] DPI setting per-stage
+    - [x] Set active DPI stage
+    - [x] Set DPI for a given stage
+    - [x] Set accent color for a given stage
+    - [ ] Add/remove DPI stages
 - [x] Polling rate
 - [x] Sensor sampling rate
 - [x] Debounce time
