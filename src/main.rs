@@ -24,10 +24,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// test
-    Test,
-
-    /// Set device parameters
+    /// Set general device parameters
     Set {
         /// DPI stage to enable
         #[arg(short = 'd', long, value_parser = value_parser!(u8).range(1..=8))]
@@ -69,7 +66,7 @@ enum Info {
 
 #[derive(Subcommand)]
 enum Dpi {
-    /// Set DPI for a specific stage
+    /// Change DPI settings for a specific stage
     Set {
         /// DPI stage to change (1-8)
         #[arg(short, long, value_parser = value_parser!(u8).range(1..=8))]
@@ -80,6 +77,9 @@ enum Dpi {
         /// Y DPI value, if not specified, X DPI will be used
         #[arg(short, long, value_parser = value_parser!(u16).range(50..=16000))]
         y_dpi: Option<u16>,
+        /// RGB color in 255,255,255 format, if not specified, color will not be changed
+        #[arg(short, long)]
+        rgb: Option<String>,
     },
 }
 
@@ -95,16 +95,6 @@ fn main() -> Result<()> {
     };
 
     match cli.command {
-        Commands::Test => {
-            // dpi setting 1
-            device.write(&vec![
-                0x8, 0x8, 0x0, 0x0, 0xc, 0x8, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x31,
-            ])?;
-            let mut buf = [0u8; 64];
-            let len = device.read(&mut buf)?;
-            println!("Response: {:02x?}", &buf[..len]);
-        }
         Commands::Set {
             dpi_stage,
             polling_rate,
@@ -169,12 +159,13 @@ fn main() -> Result<()> {
         },
         Commands::Dpi(cmd) => match cmd {
             Dpi::Set {
-                stage: _,
+                stage,
                 x_dpi,
                 y_dpi,
+                rgb,
             } => {
                 let _ = y_dpi.unwrap_or(x_dpi);
-                if let Err(e) = dpi::apply_dpi_setting(&device) {
+                if let Err(e) = dpi::apply_dpi_setting(&device, stage, x_dpi, y_dpi, rgb.as_ref()) {
                     eprintln!("Error setting DPI: {}", e);
                 }
             }

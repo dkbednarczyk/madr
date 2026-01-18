@@ -1,56 +1,131 @@
-use std::{thread, time::Duration};
+// See documentation/dpi-and-rgb-encoding.md for details on encoding
+
+use std::str::FromStr;
 
 use crate::device::Device;
 use anyhow::Result;
 
+pub struct Rgb {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl FromStr for Rgb {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split(',').collect();
+        if parts.len() != 3 {
+            return Err(anyhow::anyhow!("Invalid RGB format. Expected format: R,G,B"));
+        }
+
+        let r: u8 = parts[0].parse().map_err(|_| anyhow::anyhow!("Invalid R value"))?;
+        let g: u8 = parts[1].parse().map_err(|_| anyhow::anyhow!("Invalid G value"))?;
+        let b: u8 = parts[2].parse().map_err(|_| anyhow::anyhow!("Invalid B value"))?;
+
+        Ok(Rgb { r, g, b })
+    }
+}
+
 pub struct DpiStage {
-    pub x_dpi: u16,
-    pub y_dpi: u16,
-    pub rgb: (u8, u8, u8),
+    x_dpi: u16,
+    y_dpi: u16,
 }
 
 impl DpiStage {
-    pub fn new(x_dpi: u16, y_dpi: u16, rgb: (u8, u8, u8)) -> Self {
-        Self { x_dpi, y_dpi, rgb }
-    }
-
-    pub fn symmetric(dpi: u16, rgb: (u8, u8, u8)) -> Self {
-        Self::new(dpi, dpi, rgb)
+    pub fn new(x_dpi: u16, y_dpi: u16) -> Self {
+        Self { x_dpi, y_dpi }
     }
 }
 
-pub fn get_dpi_packet_pair(packet_index: u8, x_a: u16, y_a: u16, x_b: u16, y_b: u16) -> Vec<u8> {
+pub fn read_dpi_stages(device: &Device, packet_index: u8) -> Result<Vec<u8>> {
+    let packet_id = 0x04 + (packet_index * 0x08);
+
+    let mut request = vec![0u8; 17];
+    request[0] = 0x08;
+    request[1] = 0x08;
+    request[4] = packet_id;
+    request[5] = 0x08;
+    request[16] = 0x3Du8.wrapping_sub(packet_id);
+
+    device.send_feature_report(&request)?;
+
+    let mut buf = [0u8; 17];
+    device.read_timeout(&mut buf, 20)?;
+
+    return Ok(buf.to_vec());
+}
+
+pub fn decode_dpi_pair(packet: &[u8]) -> (DpiStage, DpiStage) {
+    let decode_dpi = |x_low: u8, y_low: u8, high_container: u8| -> (u16, u16) {
+        let x_high = (high_container >> 2) & 0x0F;
+        let y_high = (high_container >> 6) & 0x03;
+
+        let x_val = ((x_high as u16) << 8) | (x_low as u16);
+        let y_val = ((y_high as u16) << 8) | (y_low as u16);
+
+        let x_dpi = (x_val + 1) * 50;
+        let y_dpi = (y_val + 1) * 50;
+
+        (x_dpi, y_dpi)
+    };
+
+    let (x_dpi_a, y_dpi_a) = decode_dpi(packet[6], packet[7], packet[8]);
+    let (x_dpi_b, y_dpi_b) = decode_dpi(packet[10], packet[11], packet[12]);
+
+    let stage_a = DpiStage::new(x_dpi_a, y_dpi_a);
+    let stage_b = DpiStage::new(x_dpi_b, y_dpi_b);
+
+    (stage_a, stage_b)
+}
+
+
+pub fn read_rgb_stages(device: &Device, packet_index: u8) -> Result<Vec<u8>> {
+    let packet_id = 0x24 + (packet_index * 0x08);
+
+    let mut request = vec![0u8; 17];
+    request[0] = 0x08;
+    request[1] = 0x08;
+    request[4] = packet_id;
+    request[5] = 0x08;
+    request[16] = 0x3Du8.wrapping_sub(packet_id);
+
+    device.send_feature_report(&request)?;
+
+    let mut buf = [0u8; 17];
+    device.read_timeout(&mut buf, 20)?;
+
+    return Ok(buf.to_vec());
+}
+
+pub fn decode_rgb_pair(response: &[u8]) -> (Rgb, Rgb) {
+    let decode = |offset: usize| -> Rgb {
+        Rgb {
+            r: response[offset],
+            g: response[offset + 1],
+            b: response[offset + 2],
+        }
+    };
+
+    (decode(6), decode(10))
+}
+
+pub fn encode_dpi_pair(packet_index: u8, stage_a: &DpiStage, stage_b: &DpiStage) -> Vec<u8> {
     let packet_id = 0x04 + (packet_index * 0x08);
 
     let encode_dpi = |x: u16, y: u16| -> (u8, u8, u8, u8) {
-        // Mouse stores DPI in units of 50 DPI, with an offset of 1
-        // i.e., 50 DPI = 0, 100 DPI = 1, etc.
-        // let's assume we have x and y as 30000, the max
         let x_val = (x / 50).saturating_sub(1);
         let y_val = (y / 50).saturating_sub(1);
 
-        // at this point x_val and y_val are both larger than 255, max u8.
-        // so first we get only lowest 8 bits of each value
         let x_low = (x_val & 0xFF) as u8;
         let y_low = (y_val & 0xFF) as u8;
 
-        // and now the highest 8 bits (anything above 255)
-        // there should be max 2 bits here
         let x_high = ((x_val >> 8) & 0xFF) as u8;
         let y_high = ((y_val >> 8) & 0xFF) as u8;
 
-        // so what we have done is
-        // 30000 dpi -> 599 -> 00000010 01010111
-        // low  byte -> 01010111 (87)
-        // high byte -> 00000010 (2)
-
-        // we pack the high bits into a single byte
-        // y_high << 6 = 10000000
-        // x_high << 2 = 00001000
-        // OR them together = 136
         let high_container = (y_high << 6) | (x_high << 2);
 
-        // Calculate checksum
         let checksum = 0x55u8
             .wrapping_sub(x_low)
             .wrapping_sub(y_low)
@@ -59,10 +134,9 @@ pub fn get_dpi_packet_pair(packet_index: u8, x_a: u16, y_a: u16, x_b: u16, y_b: 
         (x_low, y_low, high_container, checksum)
     };
 
-    let (x_low_a, y_low_a, high_a, check_a) = encode_dpi(x_a, y_a);
-    let (x_low_b, y_low_b, high_b, check_b) = encode_dpi(x_b, y_b);
+    let (x_low_a, y_low_a, high_a, check_a) = encode_dpi(stage_a.x_dpi, stage_a.y_dpi);
+    let (x_low_b, y_low_b, high_b, check_b) = encode_dpi(stage_b.x_dpi, stage_b.y_dpi);
 
-    // See documentation/dpi-and-rgb-encoding.md for packet structure
     vec![
         0x08,
         0x07,
@@ -84,19 +158,18 @@ pub fn get_dpi_packet_pair(packet_index: u8, x_a: u16, y_a: u16, x_b: u16, y_b: 
     ]
 }
 
-pub fn get_rgb_packet_pair(packet_index: u8, rgb_a: (u8, u8, u8), rgb_b: (u8, u8, u8)) -> Vec<u8> {
+pub fn encode_rgb_pair(packet_index: u8, rgb_a: &Rgb, rgb_b: &Rgb) -> Vec<u8> {
     let packet_id = 0x24 + (packet_index * 0x08);
 
     let checksum_a = 0x55u8
-        .wrapping_sub(rgb_a.0)
-        .wrapping_sub(rgb_a.1)
-        .wrapping_sub(rgb_a.2);
+        .wrapping_sub(rgb_a.r)
+        .wrapping_sub(rgb_a.g)
+        .wrapping_sub(rgb_a.b);
     let checksum_b = 0x55u8
-        .wrapping_sub(rgb_b.0)
-        .wrapping_sub(rgb_b.1)
-        .wrapping_sub(rgb_b.2);
+        .wrapping_sub(rgb_b.r)
+        .wrapping_sub(rgb_b.g)
+        .wrapping_sub(rgb_b.b);
 
-    // See documentation/dpi-and-rgb-encoding.md for packet structure
     vec![
         0x08,
         0x07,
@@ -104,13 +177,13 @@ pub fn get_rgb_packet_pair(packet_index: u8, rgb_a: (u8, u8, u8), rgb_b: (u8, u8
         0x00,
         packet_id,
         0x08,
-        rgb_a.0,
-        rgb_a.1,
-        rgb_a.2,
+        rgb_a.r,
+        rgb_a.g,
+        rgb_a.b,
         checksum_a,
-        rgb_b.0,
-        rgb_b.1,
-        rgb_b.2,
+        rgb_b.r,
+        rgb_b.g,
+        rgb_b.b,
         checksum_b,
         0x00,
         0x00,
@@ -118,43 +191,38 @@ pub fn get_rgb_packet_pair(packet_index: u8, rgb_a: (u8, u8, u8), rgb_b: (u8, u8
     ]
 }
 
-pub fn get_all_stage_packets(stages: &[DpiStage; 4]) -> Vec<Vec<u8>> {
-    vec![
-        // DPI packets (two stages per packet)
-        get_dpi_packet_pair(
-            1,
-            stages[0].x_dpi,
-            stages[0].y_dpi,
-            stages[1].x_dpi,
-            stages[1].y_dpi,
-        ),
-        get_dpi_packet_pair(
-            2,
-            stages[2].x_dpi,
-            stages[2].y_dpi,
-            stages[3].x_dpi,
-            stages[3].y_dpi,
-        ),
-        // RGB packets (two stages per packet)
-        get_rgb_packet_pair(1, stages[0].rgb, stages[1].rgb),
-        get_rgb_packet_pair(2, stages[2].rgb, stages[3].rgb),
-    ]
-}
+pub fn apply_dpi_setting(device: &Device, stage: u8, x_dpi: u16, y_dpi: Option<u16>, rgb: Option<&String>) -> Result<()> {
+    let packet_index: u8 = (stage as f32 / 2.0).ceil() as u8;
 
-pub fn apply_dpi_setting(device: &Device) -> Result<()> {
-    let stages = [
-        DpiStage::symmetric(1600, (255, 0, 0)),
-        DpiStage::symmetric(1600, (0, 255, 0)),
-        DpiStage::new(1600, 3200, (0, 0, 255)),
-        DpiStage::symmetric(1600, (255, 0, 255)),
-    ];
+    let dpi_stages = read_dpi_stages(device, packet_index)?;
+    let (mut stage_a, mut stage_b) = decode_dpi_pair(&dpi_stages);
 
-    let packets = get_all_stage_packets(&stages);
-    for packet in packets {
-        println!("Sending packet: {:02x?}", packet);
-        device.send_feature_report(&packet)?;
-        thread::sleep(Duration::from_millis(50));
+    if stage % 2 == 1 {
+        stage_a.x_dpi = x_dpi;
+        stage_a.y_dpi = y_dpi.unwrap_or(x_dpi);
+    } else {
+        stage_b.x_dpi = x_dpi;
+        stage_b.y_dpi = y_dpi.unwrap_or(x_dpi);
     }
+
+    let dpi_packet = encode_dpi_pair(packet_index, &stage_a, &stage_b);
+    device.send_feature_report(&dpi_packet)?;
+
+    if let Some(rgb_str) = rgb {
+        let parsed = Rgb::from_str(rgb_str)?;
+
+        let rgb_stages = read_rgb_stages(device, packet_index)?;
+        let (mut rgb_a, mut rgb_b) = decode_rgb_pair(&rgb_stages);
+
+        if stage % 2 == 1 {
+            rgb_a = parsed;
+        } else {
+            rgb_b = parsed;
+        }
+
+        let rgb_packet = encode_rgb_pair(packet_index, &rgb_a, &rgb_b);
+        device.send_feature_report(&rgb_packet)?;
+    };
 
     Ok(())
 }

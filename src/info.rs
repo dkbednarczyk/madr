@@ -96,7 +96,7 @@ pub fn get_battery(device: &Device) -> Result<()> {
     }
 
     let mut buf = [0u8; 256];
-    let size = if let Ok(s) = device.read(&mut buf) {
+    let size = if let Ok(s) = device.read_timeout(&mut buf, 20) {
         s
     } else {
         return Err(anyhow!("Failed to read battery response"));
@@ -150,7 +150,7 @@ pub fn get_sensor_info(device: &Device) -> Result<SensorInfo> {
     }
 
     let mut buf = [0u8; 256];
-    let size = if let Ok(s) = device.read(&mut buf) {
+    let size = if let Ok(s) = device.read_timeout(&mut buf, 20) {
         s
     } else {
         return Err(anyhow!("Failed to read sensor response"));

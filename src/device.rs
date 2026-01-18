@@ -31,7 +31,6 @@ impl Device {
 
         if let Some(device_info) = device_info {
             let device = device_info.open_device(&api)?;
-
             return Ok(Device {
                 wired: device_info.product_id() == MADR_WIRED_PID,
                 hid: device,
@@ -55,8 +54,8 @@ impl Device {
         Ok(size)
     }
 
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        let size = self.hid.read(buf)?;
+    pub fn read_timeout(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize> {
+        let size = self.hid.read_timeout(buf, timeout_ms)?;
         Ok(size)
     }
 }
