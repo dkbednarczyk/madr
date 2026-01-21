@@ -3,7 +3,7 @@ build:
     cargo build
 
 run *ARGS: build
-    ./target/debug/vxectl {{ARGS}}
+    ../target/debug/madrctl {{ARGS}}
 
 # Build the project in release mode
 build-release:

@@ -3,7 +3,7 @@
 use std::str::FromStr;
 
 use crate::device::Device;
-use crate::{Result, MadRError};
+use crate::{MadRError, Result};
 
 pub struct Rgb {
     r: u8,
@@ -201,25 +201,47 @@ pub fn encode_rgb_pair(report_index: u8, rgb_a: &Rgb, rgb_b: &Rgb) -> Vec<u8> {
 pub fn apply_dpi_setting(
     device: &Device,
     stage: u8,
-    x_dpi: u16,
+    x_dpi: Option<u16>,
     y_dpi: Option<u16>,
     rgb: Option<&str>,
 ) -> Result<()> {
-    let report_index: u8 = (stage as f32 / 2.0).ceil() as u8;
-
-    let dpi_stages = read_dpi_stages(device, report_index)?;
-    let (mut stage_a, mut stage_b) = decode_dpi_pair(&dpi_stages);
-
-    if stage % 2 == 1 {
-        stage_a.x_dpi = x_dpi;
-        stage_a.y_dpi = y_dpi.unwrap_or(x_dpi);
-    } else {
-        stage_b.x_dpi = x_dpi;
-        stage_b.y_dpi = y_dpi.unwrap_or(x_dpi);
+    if x_dpi.is_none() && rgb.is_none() {
+        return Err(MadRError::InvalidDpi(
+            "At least one of X DPI or RGB must be specified".into(),
+        ));
     }
 
-    let dpi_report = encode_dpi_pair(report_index, &stage_a, &stage_b);
-    device.send_feature_report(&dpi_report)?;
+    let report_index: u8 = (stage as f32 / 2.0).ceil() as u8;
+
+    if let Some(x_dpi_val) = x_dpi {
+        if x_dpi_val % 50 != 0 || x_dpi_val < 100 || x_dpi_val > 30000 {
+            return Err(MadRError::InvalidDpi(
+                "X DPI must be between 100 and 30000 and a multiple of 50".into(),
+            ));
+        }
+
+        if let Some(y_dpi_val) = y_dpi {
+            if y_dpi_val % 50 != 0 || y_dpi_val < 100 || y_dpi_val > 30000 {
+                return Err(MadRError::InvalidDpi(
+                    "Y DPI must be between 100 and 30000 and a multiple of 50".into(),
+                ));
+            }
+        }
+
+        let dpi_stages = read_dpi_stages(device, report_index)?;
+        let (mut stage_a, mut stage_b) = decode_dpi_pair(&dpi_stages);
+
+        if stage % 2 == 1 {
+            stage_a.x_dpi = x_dpi_val;
+            stage_a.y_dpi = y_dpi.unwrap_or(x_dpi_val);
+        } else {
+            stage_b.x_dpi = x_dpi_val;
+            stage_b.y_dpi = y_dpi.unwrap_or(x_dpi_val);
+        }
+
+        let dpi_report = encode_dpi_pair(report_index, &stage_a, &stage_b);
+        device.send_feature_report(&dpi_report)?;
+    }
 
     if let Some(rgb_str) = rgb {
         let parsed = Rgb::from_str(rgb_str)?;

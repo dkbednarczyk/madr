@@ -1,11 +1,26 @@
 use crate::device::Device;
-use crate::{Result, MadRError};
+use crate::{MadRError, Result};
 
 #[derive(Debug)]
 pub struct Battery {
-    pub percentage: u8,
-    pub voltage_mv: u16,
-    pub is_charging: bool,
+    percentage: u8,
+    voltage_mv: u16,
+    is_charging: bool,
+}
+
+impl Battery {
+    pub fn percentage(&self) -> u8 {
+        self.percentage
+    }
+
+    /// Voltage in millivolts
+    pub fn voltage(&self) -> u16 {
+        self.voltage_mv
+    }
+
+    pub fn is_charging(&self) -> bool {
+        self.is_charging
+    }
 }
 
 fn parse_battery_report(data: &[u8]) -> Result<Battery> {

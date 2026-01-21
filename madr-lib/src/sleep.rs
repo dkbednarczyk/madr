@@ -1,5 +1,5 @@
 use crate::device::Device;
-use crate::{Result, MadRError};
+use crate::{MadRError, Result};
 use std::thread;
 use std::time::Duration;
 

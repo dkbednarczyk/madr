@@ -1,4 +1,4 @@
-use crate::{Result, MadRError};
+use crate::{MadRError, Result};
 use hidapi::{HidApi, HidDevice};
 
 const VXE_VID: u16 = 0x373b;
@@ -11,7 +11,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new() -> Result<Self> {
+    pub fn open() -> Result<Self> {
         let api = HidApi::new()?;
 
         let device_info = api.device_list().find(|x| {

@@ -1,9 +1,9 @@
 use crate::device::Device;
-use crate::{Result, MadRError};
+use crate::{MadRError, Result};
 
 #[derive(Debug)]
 pub struct Sensor {
-    setting: u8,
+    pub setting: u8,
 }
 
 impl Sensor {
