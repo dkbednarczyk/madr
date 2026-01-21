@@ -23,6 +23,3 @@ This project is split into two parts, a library and a generic CLI tool that impl
 - [ ] LOD Silent Height (liftoff distance)
 
 *... and more ...*
-
-## TODO
-- [ ] Add functionality to read current DPI stage and polling rate as to not overwrite then when setting only one of the two
